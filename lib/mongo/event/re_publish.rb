@@ -12,33 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-require 'mongo/event/publisher'
-require 'mongo/event/subscriber'
-require 'mongo/event/host_added'
-require 'mongo/event/host_removed'
-
 module Mongo
-
   module Event
 
-    # When a server description has a new host added.
-    #
-    # @since 3.0.0
-    HOST_ADDED = "host_added".freeze
+    class RePublish
 
-    # When a server description has a host removed.
-    #
-    # @since 3.0.0
-    HOST_REMOVED = "host_removed".freeze
+      def handle(*args)
 
-    # When a server is to be added to a cluster.
-    #
-    # @since 3.0.0
-    SERVER_ADDED = "server_added".freeze
-
-    # When a server is to be removed from a cluster.
-    #
-    # @since 3.0.0
-    SERVER_REMOVED = "server_removed".freeze
+      end
+    end
   end
 end
