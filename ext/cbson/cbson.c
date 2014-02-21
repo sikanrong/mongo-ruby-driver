@@ -218,6 +218,38 @@ static void write_name_and_type(bson_buffer_t buffer, VALUE name, char type) {
     SAFE_WRITE(buffer, &zero, 1);
 }
 
+static void write_date(bson_buffer_t buffer, VALUE key, VALUE value) {
+    int month = NUM2INT(rb_funcall(value, rb_intern("month"), 0));
+    int day = NUM2INT(rb_funcall(value, rb_intern("day"), 0));
+    int year = NUM2INT(rb_funcall(value, rb_intern("year"), 0));
+
+    char mdy_str[11];
+    sprintf(mdy_str, "%02i/%02i/%04i", month, day, year);
+
+    VALUE mdy_rstr = rb_str_new2(mdy_str);
+
+    int length;
+    write_name_and_type(buffer, key, 0x02);
+    length = RSTRING_LENINT(mdy_rstr) + 1;
+    SAFE_WRITE(buffer, (char*)&length, 4);
+    write_utf8(buffer, mdy_rstr, 1);
+    SAFE_WRITE(buffer, &zero, 1);
+
+}
+
+static void write_date_time(bson_buffer_t buffer, VALUE key, VALUE value) {
+    long long time_since_epoch = NUM2LL(rb_funcall(value, rb_intern("to_i"), 0));
+    time_since_epoch = time_since_epoch * 1000;
+    write_name_and_type(buffer, key, 0x09);
+    SAFE_WRITE(buffer, (const char*)&time_since_epoch, 8);
+}
+
+static void write_big_decimal(bson_buffer_t buffer, VALUE key, VALUE value) {
+    double t = NUM2DBL(rb_funcall(value, rb_intern("to_f"), 0));
+    write_name_and_type(buffer, key, 0x01);
+    SAFE_WRITE(buffer, (const char*)&t, sizeof(double));
+}
+
 static void serialize_regex(bson_buffer_t buffer, VALUE key, VALUE pattern, long flags, VALUE value, int native) {
 
     VALUE has_extra;
@@ -532,16 +564,28 @@ static int write_element(VALUE key, VALUE value, VALUE extra, int allow_id) {
                 SAFE_WRITE(buffer, (const char*)&seconds, 4);
                 break;
             }
-            if (strcmp(cls, "DateTime") == 0 || strcmp(cls, "Date") == 0 || strcmp(cls, "ActiveSupport::TimeWithZone") == 0) {
-                bson_buffer_free(buffer);
-                rb_raise(InvalidDocument, "%s is not currently supported; use a UTC Time instance instead.", cls);
+            
+            if(strcmp(cls, "Date") == 0){
+                write_date(buffer, key, value);
                 break;
             }
-            if(strcmp(cls, "Complex") == 0 || strcmp(cls, "Rational") == 0 || strcmp(cls, "BigDecimal") == 0) {
+            
+            if (strcmp(cls, "DateTime") == 0 || strcmp(cls, "ActiveSupport::TimeWithZone") == 0) {
+                write_date_time(buffer, key, value);
+                break;
+            }
+            
+            if(strcmp(cls, "BigDecimal") == 0){
+                write_big_decimal(buffer, key, value);
+                break;
+            }
+            
+            if(strcmp(cls, "Complex") == 0 || strcmp(cls, "Rational") == 0 ) {
                 bson_buffer_free(buffer);
                 rb_raise(InvalidDocument, "Cannot serialize the Numeric type %s as BSON; only Bignum, Fixnum, and Float are supported.", cls);
                 break;
             }
+            
             if (strcmp(cls, "ActiveSupport::Multibyte::Chars") == 0) {
                 int length;
                 VALUE str = StringValue(value);
@@ -572,16 +616,21 @@ static int write_element(VALUE key, VALUE value, VALUE extra, int allow_id) {
                 break;
             }
             // Date classes are TYPE T_DATA in Ruby >= 1.9.3
-            if (strcmp(cls, "DateTime") == 0 || strcmp(cls, "Date") == 0 || strcmp(cls, "ActiveSupport::TimeWithZone") == 0) {
-                bson_buffer_free(buffer);
-                rb_raise(InvalidDocument, "%s is not currently supported; use a UTC Time instance instead.", cls);
+            if(strcmp(cls, "Date") == 0){
+                write_date(buffer, key, value);
                 break;
             }
-            if(strcmp(cls, "BigDecimal") == 0) {
-                bson_buffer_free(buffer);
-                rb_raise(InvalidDocument, "Cannot serialize the Numeric type %s as BSON; only Bignum, Fixnum, and Float are supported.", cls);
+            
+            if (strcmp(cls, "DateTime") == 0 || strcmp(cls, "ActiveSupport::TimeWithZone") == 0) {
+                write_date_time(buffer, key, value);
                 break;
             }
+            
+            if(strcmp(cls, "BigDecimal") == 0){
+                write_big_decimal(buffer, key, value);
+                break;
+            }
+            
             bson_buffer_free(buffer);
             rb_raise(InvalidDocument, "Cannot serialize an object of class %s into BSON.", cls);
             break;
